@@ -1,0 +1,11 @@
+# Details_Lane 0x26A (Dec:618)
+std_msgs/Header header
+float64 alivecnt_me_laneaddinfo
+float64 rightlaneprediction
+float64 leftlaneprediction
+float64 lh_view_start_longitudinal_dist
+float64 rh_view_start_longitudinal_dist
+float64 lh_view_end_longitudinal_dist
+float64 rh_view_end_longitudinal_dist
+float64 lanemark_confidence_ln_me
+float64 lanemark_confidence_rn_me

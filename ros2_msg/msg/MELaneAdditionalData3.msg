@@ -1,0 +1,7 @@
+# Details_Lane 0x26A (Dec:618)
+std_msgs/Header header
+float64 alivecnt_me_laneadditionaldata
+float64 rh_neighbor_lanemark_pos_c0
+float64 rh_neighbor_lanemark_model_b_c1
+float64 rh_neighbor_lanemark_model_a_c2
+float64 rh_neighbor_lanemark_model_da_c3

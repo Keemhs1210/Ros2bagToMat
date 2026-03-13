@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cmd.exe /c \"C:\\\\Users\\\\kimhs\\\\AppData\\\\Local\\\\Programs\\\\Python\\\\Python310\\\\python.exe\" -c \"print\\(''python ok''\\)\")",
+      "Bash(cmd /c \"C:\\\\Users\\\\kimhs\\\\AppData\\\\Local\\\\Programs\\\\Python\\\\Python310\\\\python.exe -c \"\"print\\(''ok''\\)\"\"\")",
+      "Bash(\"C:\\\\Users\\\\kimhs\\\\AppData\\\\Local\\\\Programs\\\\Python\\\\Python310\\\\python.exe\" diag_fusion.py)",
+      "Bash(echo \"EXIT:$?\")",
+      "Bash(\"C:\\\\Users\\\\kimhs\\\\AppData\\\\Local\\\\Programs\\\\Python\\\\Python310\\\\python.exe\" diag_fusion2.py)",
+      "Bash(\"C:\\\\Users\\\\kimhs\\\\AppData\\\\Local\\\\Programs\\\\Python\\\\Python310\\\\python.exe\" diag_msgdef.py)",
+      "Bash(\"C:\\\\Users\\\\kimhs\\\\AppData\\\\Local\\\\Programs\\\\Python\\\\Python310\\\\python.exe\" diag_deser.py)",
+      "Bash(\"C:\\\\Users\\\\kimhs\\\\AppData\\\\Local\\\\Programs\\\\Python\\\\Python310\\\\python.exe\" -c \"from rosbags.typesys import get_typestore, Stores; ts = get_typestore\\(Stores.ROS2_FOXY\\); print\\(dir\\(ts\\)\\)\")",
+      "Bash(\"C:\\\\Users\\\\kimhs\\\\AppData\\\\Local\\\\Programs\\\\Python\\\\Python310\\\\python.exe\" -c \"from rosbags.typesys import get_typestore, Stores; help\\(get_typestore\\(Stores.ROS2_FOXY\\).register\\)\")",
+      "Bash(\"C:\\\\Users\\\\kimhs\\\\AppData\\\\Local\\\\Programs\\\\Python\\\\Python310\\\\python.exe\" -c \"from rosbags.typesys import get_types_from_msg; print\\(''ok''\\)\")"
+    ]
+  }
+}

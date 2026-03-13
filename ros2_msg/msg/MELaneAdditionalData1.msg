@@ -1,0 +1,21 @@
+# Details_Lane 0x26A (Dec:618)
+std_msgs/Header header
+float64 rh_neightbor_avail
+float64 lh_neightbor_avail
+float64 rh_neightbor_type
+float64 lh_neightbor_type
+float64 alivecnt_me_laneadditionaldata_1
+float64 rh_guardrail
+float64 lh_guardrail
+float64 highway_merge_right
+float64 highway_merge_left
+float64 highway_exit_right
+float64 highway_exit_left
+float64 construction_area_detected
+float64 rightlanecolorinfo
+float64 leftlanecolorinfo
+float64 lh_viewrange_startpoint
+float64 rh_viewrange_startpoint
+
+
+

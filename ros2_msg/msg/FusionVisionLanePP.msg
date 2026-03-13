@@ -1,0 +1,8 @@
+std_msgs/Header header
+float64 measure_view_start
+float64 measure_view_end
+float64 measure_confidence
+float64 preprocessing_curvature_rate
+float64 preprocessing_curvature
+float64 preprocessing_road_slope
+float64 preprocessing_distance

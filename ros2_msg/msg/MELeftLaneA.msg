@@ -1,0 +1,12 @@
+# Details_Lane 0x26A (Dec:618)
+std_msgs/Header header
+float64 alivecnt_me_leftlane_a
+float64 classification_lh_me
+float64 ldw_system_availability_lh_me
+float64 quality_lh_me
+float64 ldw_warning_status_lh_me
+float64 lanemarkposition_c0_lh_me
+float64 marker_width_lh_me
+float64 lanemarkmodela_c2_lh_me
+float64 lane_track_id_lh_me
+

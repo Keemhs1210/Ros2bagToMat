@@ -1,0 +1,9 @@
+# Details_Lane 0x26A (Dec:618)
+std_msgs/Header header
+float64 alivecnt_me_rightlane_b
+float64 lanemarkheadingangle_c1_rh_me
+float64 lanemarkviewrangeavail_rh_me
+float64 lanemarkviewrange_rh_me
+float64 lanemarkmodelderiva_c3_rh_me
+float64 lanemark_confidence_rh_me
+
