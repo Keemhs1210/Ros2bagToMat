@@ -48,6 +48,7 @@ _RADAR_FIELDS: List[Tuple[str, str]] = [
     ("TrackRangeRate",    "track_range_rate"),
 ]
 
+# (MATLAB 출력명, ROS2 snake_case 속성명)
 _FT3_FIELD_MAP: List[Tuple[str, str]] = [
     ("Measure_Rel_Pos_Y",              "measure_rel_pos_y"),
     ("Measure_Rel_Pos_X",              "measure_rel_pos_x"),
@@ -91,14 +92,35 @@ _FT3_FIELD_MAP: List[Tuple[str, str]] = [
     ("Tracking_Heading_Angle",         "tracking_heading_angle"),
     ("Tracking_Range",                 "tracking_range"),
     ("Tracking_Angle",                 "tracking_angle"),
+    # Threat (13) — idx 42~54
+    ("Tracking_Threat_P_Long",         "tracking_threat_p_long"),
     ("Tracking_Threat_TTC",            "tracking_threat_ttc"),
+    ("Tracking_Threat_D_Br",           "tracking_threat_d_br"),
+    ("Tracking_Threat_D_W",            "tracking_threat_d_w"),
+    ("Tracking_Threat_X_P",            "tracking_threat_x_p"),
     ("Tracking_Threat_I_Long",         "tracking_threat_i_long"),
+    ("Tracking_Threat_DLC",            "tracking_threat_dlc"),
+    ("Tracking_Threat_TLC",            "tracking_threat_tlc"),
     ("Tracking_Threat_I_LAT",          "tracking_threat_i_lat"),
     ("Tracking_Threat_RSS_X",          "tracking_threat_rss_x"),
     ("Tracking_Threat_RSS_Y",          "tracking_threat_rss_y"),
     ("Tracking_Threat_FCW_HONDA",      "tracking_threat_fcw_honda"),
     ("Tracking_Threat_CP",             "tracking_threat_cp"),
+    # Vehicle (3) — idx 55~57
+    ("Vehicle_Recognition",            "vehicle_recognition"),
+    ("Vehicle_Manuever_Pr_Ctrv",       "vehicle_manuever_pr_ctrv"),
+    ("Vehicle_Manuever",               "vehicle_manuever"),
+    # Pedestrian (2) — idx 58~59
+    ("Pedestrian_Manuever",            "pedestrian_manuever"),
+    ("Pedestrian_Recognition",         "pedestrian_recogntion"),
+    # Cyclist (1) — idx 60
+    ("Cyclist_Recognition",            "cyclist_recogntion"),
+    # E-Scooter (1) — idx 61
+    ("E_Scooter_Recognition",          "e_scooter_recogntion"),
 ]
+
+# 62개 필드 모두 연속 인덱스 (0~61)
+_FT3_FIELD_IDX: List[int] = list(range(62))
 
 # Mobileye Track → Additional Data 그룹 매핑
 _TRACK_TO_GROUP: Dict[int, int] = {1:1, 2:1, 3:2, 4:2, 5:3, 6:3, 7:4, 8:4, 9:5, 10:5}
@@ -361,15 +383,56 @@ def process_front_radar_track(
     return result
 
 
+_PP_LANE_TOPIC = "/sensorfusion/pp/fusionvisionlanes"
+
+# FusionVisionLanePP 필드 → MATLAB 출력명 매핑
+_PP_LANE_FIELDS: List[Tuple[str, str]] = [
+    ("View_Start",     "measure_view_start"),
+    ("View_End",       "measure_view_end"),
+    ("Confidence",     "measure_confidence"),
+    ("Curvature_Rate", "preprocessing_curvature_rate"),
+    ("Curvature",      "preprocessing_curvature"),
+    ("Road_Slope",     "preprocessing_road_slope"),
+    ("Distance",       "preprocessing_distance"),
+]
+
+
 def process_mobileye_lane(reader: BagReader, syncer: Synchronizer) -> Dict[str, np.ndarray]:
     result: Dict[str, np.ndarray] = {}
+    N = syncer.signal_length
+
+    # ── Mobileye 원본 lane 토픽 ──────────────────────────────
     for key, topic in _ME_LANE_TOPICS.items():
         msgs, ts = reader.get(topic)
         if not msgs:
             print(f"  [WARN] {topic} 없음")
             continue
-        result.update(_extract_flat(syncer.sync(msgs, ts), syncer.signal_length,
-                                    prefix=f"ME_Lane_{key}_"))
+        result.update(_extract_flat(syncer.sync(msgs, ts), N, prefix=f"ME_Lane_{key}_"))
+
+    # ── FusionVisionLane PP (Left / Right) ───────────────────
+    # lanes[0] = Left, lanes[1] = Right
+    msgs, ts = reader.get(_PP_LANE_TOPIC)
+    if msgs:
+        synced = syncer.sync(msgs, ts)
+        pp: Dict[str, np.ndarray] = {
+            f"PP_{side}_{mat_name}": np.zeros(N)
+            for side in ("Left", "Right")
+            for mat_name, _ in _PP_LANE_FIELDS
+        }
+        for t, msg in enumerate(synced):
+            if msg is None:
+                continue
+            lanes = getattr(msg, "lanes", [])
+            for side, idx in (("Left", 0), ("Right", 1)):
+                if idx >= len(lanes):
+                    continue
+                lane = lanes[idx]
+                for mat_name, ros_attr in _PP_LANE_FIELDS:
+                    pp[f"PP_{side}_{mat_name}"][t] = _fval(lane, ros_attr)
+        result.update(pp)
+    else:
+        print(f"  [WARN] {_PP_LANE_TOPIC} 없음")
+
     print("  Mobileye Lane 완료")
     return result
 
@@ -452,38 +515,187 @@ def process_mobileye_track(
     return result
 
 
+def _ft3_read_raw(bag_path: Path, topic: str) -> Tuple[List[bytes], np.ndarray]:
+    """
+    bag에서 topic의 raw CDR bytes를 읽어 (raw_list, timestamps) 반환.
+    rosbags typestore 역직렬화를 사용하지 않는다.
+    """
+    try:
+        from rosbags.rosbag2 import Reader as _R
+    except ImportError:
+        return [], np.array([], dtype=np.float64)
+
+    raw_list: List[bytes] = []
+    ts_list:  List[float] = []
+    with _R(str(bag_path)) as r:
+        conns = [c for c in r.connections if c.topic == topic]
+        if not conns:
+            return [], np.array([], dtype=np.float64)
+        for _, ts_ns, rawdata in r.messages(connections=conns):
+            raw_list.append(bytes(rawdata))
+            ts_list.append(ts_ns * 1e-9)
+    return raw_list, np.array(ts_list, dtype=np.float64)
+
+
+def _ft3_parse_cdr(rawdata: bytes, n_tracks: int = 64) -> Optional[List[Tuple[float, ...]]]:
+    """
+    FusionTrackArrayv3 CDR bytes → 각 track의 float64 61개 tuple 리스트.
+
+    CDR 레이아웃 (little-endian, 빈 frame_id 기준):
+      [0:4]   CDR encapsulation header
+      [4:24]  FusionTrackArrayv3.header (stamp 8B + frame_id 4/5B + padding)
+      [24:]   tracks (각 512B = header 12/13B + padding 3/4B + 62×float64 496B)
+              → float64 시작 = track_base + 16
+    """
+    import struct
+    FIRST_FLOAT = 40          # rawdata[24 (track0)] + 16 (header skip)
+    STRIDE      = 512         # 바이트 / track  (62×8=496 + 16 = 512)
+    N_FLOAT     = 62
+
+    if len(rawdata) < FIRST_FLOAT + STRIDE * (n_tracks - 1) + N_FLOAT * 8:
+        return None
+
+    result = []
+    for k in range(n_tracks):
+        off = FIRST_FLOAT + k * STRIDE
+        try:
+            result.append(struct.unpack_from('<62d', rawdata, off))
+        except struct.error:
+            return None
+    return result
+
+
 def process_fusion_track_v3(
-    reader:     BagReader,
+    bag_path:   Path,
     syncer:     Synchronizer,
     max_tracks: int,
 ) -> Dict[str, Any]:
     """
-    MATLAB 구조: Fusion_Track_v3.Track1.Measure_Rel_Pos_Y (nested struct)
+    /sensorfusion/situationalawareness/fusiontrackmaneuver → MAT 변환.
+    rosbags typestore 역직렬화 대신 raw CDR bytes 직접 파싱.
+
+    MATLAB 구조: Fusion_Track_v3.Track1.Measure_Rel_Pos_Y
     """
-    topic = "/sensorfusion/situationalawareness/fusiontrackmaneuver"
-    msgs, ts = reader.get(topic)
-    if not msgs:
+    TOPIC = "/sensorfusion/situationalawareness/fusiontrackmaneuver"
+    N_TRACKS_PER_MSG = 64
+
+    raw_list, ts = _ft3_read_raw(bag_path, TOPIC)
+    if not raw_list:
         print("  [WARN] Fusion Track v3 없음")
         return {}
 
-    synced = syncer.sync(msgs, ts)
-    N, MAX = syncer.signal_length, max_tracks
+    # bytes 리스트를 그대로 syncer.sync() 에 넘겨 ZOH 동기화
+    synced: List[Optional[bytes]] = syncer.sync(raw_list, ts)  # type: ignore[arg-type]
+    N, MAX = syncer.signal_length, min(max_tracks, N_TRACKS_PER_MSG)
 
-    # MATLAB 구조에 맞춰 nested dict로 초기화
+    mat_names = [m for m, _ in _FT3_FIELD_MAP]
     result: Dict[str, Any] = {
-        f"Track{i}": {mat: np.zeros(N) for mat, _ in _FT3_FIELD_MAP}
+        f"Track{i}": {m: np.zeros(N) for m in mat_names}
         for i in range(1, MAX + 1)
+    }
+
+    parse_err = 0
+    for t, rawdata in enumerate(synced):
+        if rawdata is None:
+            continue
+        tracks = _ft3_parse_cdr(rawdata, N_TRACKS_PER_MSG)
+        if tracks is None:
+            parse_err += 1
+            continue
+        for k in range(MAX):
+            vals = tracks[k]
+            tr   = result[f"Track{k + 1}"]
+            for fi, (mat_name, _) in enumerate(_FT3_FIELD_MAP):
+                tr[mat_name][t] = vals[_FT3_FIELD_IDX[fi]]
+
+    if parse_err:
+        print(f"  [WARN] CDR 파싱 실패 {parse_err}개 스텝")
+    print("  Fusion Track v3 완료")
+    return result
+
+
+_TARGET_FIELDS: List[str] = [
+    "fvl", "fvi", "fvr",
+    "avl", "avr",
+    "rvl", "rvi", "rvr",
+    "fpi", "fpl", "fpr",
+    "fci", "fcl", "fcr",
+    "fei", "fel", "fer",
+]
+
+
+def process_target(reader: BagReader, syncer: Synchronizer) -> Dict[str, np.ndarray]:
+    """
+    /fusion_target → MAT 변환.
+    출력: FVL, FVI, FVR, ... 각각 [signal_length × 21] 배열
+    """
+    topic = "/fusion_target"
+    msgs, ts = reader.get(topic)
+    if not msgs:
+        print("  [WARN] Target 없음")
+        return {}
+
+    synced = syncer.sync(msgs, ts)
+    N      = syncer.signal_length
+    result: Dict[str, np.ndarray] = {
+        f.upper(): np.zeros((N, 21), dtype=np.float64)
+        for f in _TARGET_FIELDS
     }
 
     for t, msg in enumerate(synced):
         if msg is None:
             continue
-        for k, trk in enumerate(list(getattr(msg, "tracks", []))[:MAX], start=1):
-            tr = result[f"Track{k}"]
-            for mat_name, ros_attr in _FT3_FIELD_MAP:
-                tr[mat_name][t] = _fval(trk, ros_attr)
+        for f in _TARGET_FIELDS:
+            arr = getattr(msg, f, None)
+            if arr is not None:
+                result[f.upper()][t] = np.asarray(arr, dtype=np.float64)
 
-    print("  Fusion Track v3 완료")
+    print("  Target 완료")
+    return result
+
+
+def process_road_barrier(reader: BagReader, syncer: Synchronizer) -> Dict[str, np.ndarray]:
+    """
+    RoadBarrier 토픽 → MAT 변환 (모두 FrameNum × 30).
+
+    매핑:
+      x_range_road_barrier_left  → Guardrail_Left_x
+      x_range_road_barrier_right → Guardrail_Right_x
+      guardrail_y[0:30]          → Guardrail_Left_Y_opt
+      guardrail_y[30:60]         → Guardrail_Right_Y_opt
+      road_barrier_left          → Road_Barrier_Left
+      road_barrier_right         → Road_Barrier_Right
+    """
+    topic = "/fusion_road_barrier"
+    msgs, ts = reader.get(topic)
+    if not msgs:
+        print("  [WARN] Road Barrier 없음")
+        return {}
+
+    synced = syncer.sync(msgs, ts)
+    N      = syncer.signal_length
+    keys   = ["Guardrail_Left_x", "Guardrail_Right_x",
+              "Guardrail_Left_Y_opt", "Guardrail_Right_Y_opt",
+              "Road_Barrier_Left", "Road_Barrier_Right"]
+    result: Dict[str, np.ndarray] = {k: np.zeros((N, 30), dtype=np.float64) for k in keys}
+
+    for t, msg in enumerate(synced):
+        if msg is None:
+            continue
+        def _arr(attr: str) -> np.ndarray:
+            v = getattr(msg, attr, None)
+            return np.asarray(v, dtype=np.float64) if v is not None else np.zeros(30)
+
+        result["Guardrail_Left_x"][t]    = _arr("x_range_road_barrier_left")
+        result["Guardrail_Right_x"][t]   = _arr("x_range_road_barrier_right")
+        result["Road_Barrier_Left"][t]   = _arr("road_barrier_left")
+        result["Road_Barrier_Right"][t]  = _arr("road_barrier_right")
+
+        gy = _arr("guardrail_y")           # shape (60,)
+        result["Guardrail_Left_Y_opt"][t]  = gy[:30]
+        result["Guardrail_Right_Y_opt"][t] = gy[30:60]
+
+    print("  Road Barrier 완료")
     return result
 
 
@@ -641,6 +853,7 @@ def collect_needed_topics(cfg: Any) -> List[str]:
         topics += [f"/LOGBYTE{i}" for i in range(4)]
     if cfg.toggle_mobileye:
         topics += list(_ME_LANE_TOPICS.values())
+        topics.append(_PP_LANE_TOPIC)
         topics += [f"/ObstacleData{i}{s}" for i in range(1, 11) for s in ("A","B","C")]
         topics += [f"/ObstacleAdditionalData{i}" for i in range(1, 6)]
     if cfg.toggle_front_radar_track:
@@ -653,8 +866,11 @@ def collect_needed_topics(cfg: Any) -> List[str]:
         topics.append("/lidar_tracking")
     if cfg.toggle_odd_monitor:
         topics.append("/ODD_monitor")
-    if cfg.toggle_fusion_track_v3:
-        topics.append("/sensorfusion/situationalawareness/fusiontrackmaneuver")
+    # fusiontrackmaneuver: raw CDR 직접 파싱이므로 BagReader 목록에서 제외
+    if cfg.toggle_target:
+        topics.append("/fusion_target")
+    if cfg.toggle_road_barrier:
+        topics.append("/fusion_road_barrier")
     if cfg.toggle_fallback_decision:
         topics.append("/fallback_result_topic_Orin")
     if cfg.toggle_collision_mode_sfcpp:

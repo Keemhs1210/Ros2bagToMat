@@ -27,7 +27,7 @@ from typing import Any, Dict, List, Optional
 import numpy as np
 from scipy.io import savemat
 
-from util.utils import BagReader, Synchronizer, _BACKEND, bag_start_from_db3
+from util.utils import BagReader, Synchronizer, _BACKEND
 from util.processors import (
     collect_needed_topics,
     process_chassis,
@@ -41,6 +41,8 @@ from util.processors import (
     process_mobileye_lane,
     process_mobileye_track,
     process_odd_monitor,
+    process_road_barrier,
+    process_target,
     process_vision_avi,
 )
 
@@ -81,6 +83,8 @@ class Config:
     toggle_lidar_tracking:       bool = False
     toggle_odd_monitor:          bool = False
     toggle_fusion_track_v3:      bool = True
+    toggle_target:               bool = True
+    toggle_road_barrier:         bool = True
     toggle_fallback_decision:    bool = False
     toggle_collision_mode_sfcpp: bool = False
     toggle_vision_avi:           bool = True
@@ -154,32 +158,12 @@ def process_single_bag(bag_path: Path, cfg: Config, output_path: Path) -> bool:
     print(f"({time.perf_counter()-t0:.1f}s)")
 
     # ── 2) 동기화 기준 시간 설정 ─────────────────
-    # /timestamp 토픽이 있으면 우선 사용, 없으면 topic 시간 범위, 그것도 없으면 2분 기본값
     _, ts_times = reader.get("/timestamp")
-    if ts_times.size > 0:
-        start_time = float(ts_times[0])
-        end_time   = float(ts_times[-1])
-        print(f"  [INFO] /timestamp 기준 사용")
-    else:
-        # /timestamp 없음 → 읽힌 모든 topic의 min/max 타임스탬프 사용
-        all_ts: List[float] = []
-        for t in needed:
-            _, tss = reader.get(t)
-            if tss.size > 0:
-                all_ts.extend([float(tss[0]), float(tss[-1])])
-        if all_ts:
-            start_time = min(all_ts)
-            end_time   = max(all_ts)
-            print(f"  [INFO] /timestamp 없음 → 전체 topic 시간 범위 사용 ({end_time-start_time:.1f}s)")
-        else:
-            # 읽힌 데이터 없음 → db3에서 시작 시간 추출 후 기본 2분 설정
-            bag_start = bag_start_from_db3(bag_path)
-            if bag_start is None:
-                print("  [ERROR] bag 시작 시간을 읽을 수 없음 → 건너뜀")
-                return False
-            start_time = bag_start
-            end_time   = bag_start + 120.0
-            print(f"  [WARN] topic 데이터 없음 → db3 시작시간 기준 기본 2분 설정")
+    if ts_times.size == 0:
+        print("  [ERROR] /timestamp 토픽 없음 → 건너뜀")
+        return False
+    start_time = float(ts_times[0])
+    end_time   = float(ts_times[-1])
 
     start_time    = float(start_time)
     end_time      = float(end_time)
@@ -239,7 +223,15 @@ def process_single_bag(bag_path: Path, cfg: Config, output_path: Path) -> bool:
     if cfg.toggle_fusion_track_v3:
         _timed("Fusion Track v3",
                lambda: run("Fusion_Track_v3",
-                           process_fusion_track_v3(reader, syncer, cfg.max_fusion_tracks)))
+                           process_fusion_track_v3(bag_path, syncer, cfg.max_fusion_tracks)))
+
+    if cfg.toggle_target:
+        _timed("Target",
+               lambda: save_data.update(process_target(reader, syncer)))
+
+    if cfg.toggle_road_barrier:
+        _timed("Road Barrier",
+               lambda: save_data.update(process_road_barrier(reader, syncer)))
 
     if cfg.toggle_fallback_decision:
         _timed("Fallback Decision",

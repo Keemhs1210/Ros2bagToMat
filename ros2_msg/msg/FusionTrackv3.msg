@@ -3,7 +3,7 @@ std_msgs/Header header
 # Measure (12)
 float64 measure_rel_pos_y
 float64 measure_rel_pos_x
-float64 measure_rel_vel_y
+float64 measure_rel_vel_y 
 float64 measure_rel_vel_x
 float64 measure_abs_vel_y
 float64 measure_abs_vel_x
@@ -38,7 +38,7 @@ float64 tracking_rel_pos_y
 float64 tracking_rel_pos_x
 float64 tracking_rel_vel_y
 float64 tracking_rel_vel_x
-float64 tracking_rel_acc_y
+float64 tracking_rel_acc_y 
 float64 tracking_rel_acc_x
 float64 tracking_updated_age
 float64 tracking_coasting_age
@@ -76,10 +76,13 @@ float64 vehicle_manuever_pr_ctrv
 float64 vehicle_manuever
 
 # Pedestrian Manuever (1)
-float64 pedestrian_recognition
+float64 pedestrian_manuever
+
+# Pedestrian Recognition (1)
+float64 pedestrian_recogntion
 
 # Cyclist Recogntion
-float64 cyclist_recognition
+float64 cyclist_recogntion
 
 # E_Scooter Recognition
-float64 e_scooter_recognition
+float64 e_scooter_recogntion
