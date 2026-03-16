@@ -19,6 +19,7 @@ ROS2 bag (.db3) → MATLAB (.mat) 변환기
 
 from __future__ import annotations
 
+import re
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -61,9 +62,8 @@ class Config:
     """
 
     # ── 경로 ───────────────────────────────────
-    vehicle_date:   str = "CN7_030526"
-    rosbag_dir:     str = "D:/FOT_Avante Data_1/Rosbag"
-    rosbag2mat_dir: str = "D:/FOT_Avante Data_1/Rosbag2Mat"
+    rosbag_dir:     str = "C:/"
+    rosbag2mat_dir: str = "C:/"
 
     # ── 샘플링 주기 (20 Hz) ────────────────────
     sample_time: float = 0.05
@@ -118,11 +118,11 @@ class Config:
     # ── 파생 경로 ──────────────────────────────
     @property
     def rosbag_path(self) -> Path:
-        return Path(self.rosbag_dir) / self.vehicle_date
+        return Path(self.rosbag_dir)
 
     @property
     def rosbag2mat_path(self) -> Path:
-        return Path(self.rosbag2mat_dir) / self.vehicle_date
+        return Path(self.rosbag2mat_dir)
 
 
 # ─────────────────────────────────────────────────────────────
@@ -345,12 +345,16 @@ def main() -> None:
     print(f"총 {len(bags)}개 bag 발견  →  {len(target_bags)}개 처리 예정")
     print(f"처리 범위: {cfg.start_bag_number} ~ {end_num}")
 
-    mat_root.mkdir(parents=True, exist_ok=True)
+    # 출력 하위 폴더 = bag 폴더명에서 끝 _숫자 제거 (예: CN7_260312_001 → CN7_260312)
+    first_bag_name = target_bags[0].name
+    base_name = re.sub(r"_\d+$", "", first_bag_name)
+    mat_out_dir = mat_root / base_name
+    mat_out_dir.mkdir(parents=True, exist_ok=True)
     error_bags: List[str] = []
 
     for bag_path in target_bags:
-        # 출력 파일명 = bag 폴더명 그대로 사용 (CN7_260312_001.mat 등)
-        out_mat = mat_root / f"{bag_path.name}.mat"
+        # 출력 파일명 = bag 하위 폴더명 그대로 (예: CN7_260312_001.mat)
+        out_mat = mat_out_dir / f"{bag_path.name}.mat"
         if not process_single_bag(bag_path, cfg, out_mat):
             error_bags.append(bag_path.name)
 
